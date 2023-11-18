@@ -6,6 +6,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -23,6 +28,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     // JwtService는 JWT 작업을 처리하는 사용자 정의 서비스로 추정됩니다.
     private final JwtService jwtService;
 
+    private final UserDetailsService userDetailsService;
+
     // OncePerRequestFilter에서 doFilterInternal 메소드를 오버라이드합니다.
     // 이 메소드는 필터링 로직을 수행하기 위해 요청당 한 번 호출됩니다.
     @Override
@@ -34,6 +41,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // 요청에서 'Authorization' 헤더를 검색합니다.
         final String authHeader = request.getHeader("Authorization");
+
 
         // JWT 토큰과 사용자 이메일을 위한 변수 초기화.
         final String jwt;
@@ -55,5 +63,32 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // 여기에 일반적으로 추출된 사용자 정보를 인증하고 보안 컨텍스트를 설정하는 추가 로직이 있어야 합니다만,
         // 이 코드 조각에서는 구현되지 않았습니다.
+
+        // 인증된 사용자가 없고, 요청된 사용자 이메일이 null이 아닌 경우,
+        // 사용자의 세부 정보를 로드하고 토큰의 유효성을 검증합니다.
+        if(userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null){
+            UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+
+            // 토큰이 유효한 경우, 사용자 인증 토큰을 생성하고 보안 컨텍스트에 설정합니다.
+            if(jwtService.isTokenValid(jwt, userDetails)){
+                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                        userDetails,
+                        null,
+                        userDetails.getAuthorities()
+                );
+
+                // 요청 세부 정보를 인증 토큰에 설정합니다.
+                authToken.setDetails(
+                        new WebAuthenticationDetailsSource().buildDetails(request)
+                );
+
+                // 스프링 시큐리티 컨텍스트에 인증 객체를 설정하여,
+                // 이후의 요청 처리에 사용자가 인증되었음을 나타냅니다.
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+            }
+        }
+
+        // 필터 체인을 계속 진행합니다.
+        filterChain.doFilter(request, response);
     }
 }
